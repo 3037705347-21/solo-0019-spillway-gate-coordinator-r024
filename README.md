@@ -16,10 +16,13 @@ go run ./cmd/server --addr 127.0.0.1:18119
 ```text
 POST /gates
 GET  /gates/{id}
+POST /gates/{id}/local
+POST /gates/{id}/central
 POST /commands
 GET  /commands/{id}
 POST /commands/{id}/interlock
 POST /commands/{id}/execute
+POST /commands/{id}/revoke
 ```
 
 登记闸门示例：
@@ -64,6 +67,33 @@ POST /commands/{id}/execute
 }
 ```
 
+## 本地控制与切回中控
+
+闸门默认处于 `central` 模式，`GET /gates/{id}` 的 `mode` 字段返回当前模式。
+
+现场人员可接管闸门（移动中或故障中的闸门会被拒绝）。接管会原子撤销该闸门上所有尚未执行的中控授权（pending、approved 变为 `revoked`，令牌失效），闸门变为 `local` + `idle`，本地模式下中控命令不能占用闸门或启动移动：
+
+```sh
+curl -XPOST http://127.0.0.1:18119/gates/gate-east/local \
+  -d '{"requested_by":"field-chen"}'
+```
+
+切回中控必须提供现场实测开度，服务据此重新确认真实条件；之后新命令以该开度为起始值，旧的已撤销授权不会复活：
+
+```sh
+curl -XPOST http://127.0.0.1:18119/gates/gate-east/central \
+  -d '{"requested_by":"dispatcher-lin","confirmed_aperture":2.0}'
+```
+
+调度员也可以在中控模式下显式撤销一条尚未执行的授权（approved 时同步释放占用）：
+
+```sh
+curl -XPOST http://127.0.0.1:18119/commands/cmd-xxxx/revoke \
+  -d '{"revoked_by":"dispatcher-lin","reason":"调度撤销"}'
+```
+
+模式切换不会改写任何 rejected、completed、aborted 的历史命令。
+
 ## 目录
 
 - `cmd/server`：服务进程。
@@ -82,6 +112,7 @@ go run ./cmd/workflowcheck --workflow register-gate
 go run ./cmd/workflowcheck --workflow request-gate-command
 go run ./cmd/workflowcheck --workflow review-safety-interlock
 go run ./cmd/workflowcheck --workflow execute-gate-command
+go run ./cmd/workflowcheck --workflow switch-gate-control
 ```
 
 这些检查会创建临时 HTTP 服务并调用真实路由。它们不调用外部网络，也不依赖数据库。

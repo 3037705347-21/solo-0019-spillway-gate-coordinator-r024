@@ -14,6 +14,7 @@ const (
 	CommandExecuting CommandStatus = "executing"
 	CommandCompleted CommandStatus = "completed"
 	CommandAborted   CommandStatus = "aborted"
+	CommandRevoked   CommandStatus = "revoked"
 )
 
 type GateCommand struct {
@@ -27,6 +28,7 @@ type GateCommand struct {
 	Interlock        *InterlockDecision
 	ExecutionToken   string
 	ExecutedBy       string
+	RevokedBy        string
 	TerminalReason   string
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
@@ -154,6 +156,35 @@ func (c *GateCommand) Abort(reason string, now time.Time) error {
 	c.ExecutionToken = ""
 	c.TerminalReason = reason
 	c.Status = CommandAborted
+	c.UpdatedAt = now.UTC()
+	c.Version++
+	return nil
+}
+
+// Revoke cancels a central authorization that was never executed. A pending
+// authorization is withdrawn before review; an approved authorization loses its
+// execution token and its gate reservation must be released by the caller.
+// Rejected, executing, completed and aborted commands are immutable history and
+// can never be revoked or otherwise rewritten by a mode change.
+func (c *GateCommand) Revoke(reason, revokedBy string, now time.Time) error {
+	if c.Status != CommandPending && c.Status != CommandApproved {
+		return Conflict("command_not_revocable", "only pending or approved commands can be revoked")
+	}
+
+	revokedBy = strings.TrimSpace(revokedBy)
+	if revokedBy == "" {
+		return Invalid("invalid_revoked_by", "revoked_by is required")
+	}
+
+	reason = strings.TrimSpace(reason)
+	if reason == "" {
+		reason = "central_authorization_revoked"
+	}
+
+	c.ExecutionToken = ""
+	c.RevokedBy = revokedBy
+	c.TerminalReason = reason
+	c.Status = CommandRevoked
 	c.UpdatedAt = now.UTC()
 	c.Version++
 	return nil

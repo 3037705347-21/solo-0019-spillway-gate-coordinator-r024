@@ -16,6 +16,7 @@ type GateView struct {
 	ID              string  `json:"id"`
 	Name            string  `json:"name"`
 	Status          string  `json:"status"`
+	Mode            string  `json:"mode"`
 	Aperture        float64 `json:"aperture"`
 	MaxAperture     float64 `json:"max_aperture"`
 	ActiveCommandID string  `json:"active_command_id,omitempty"`
@@ -34,6 +35,7 @@ type CommandView struct {
 	Interlock        *InterlockDecisionView `json:"interlock,omitempty"`
 	ExecutionToken   string                 `json:"execution_token,omitempty"`
 	ExecutedBy       string                 `json:"executed_by,omitempty"`
+	RevokedBy        string                 `json:"revoked_by,omitempty"`
 	TerminalReason   string                 `json:"terminal_reason,omitempty"`
 	CreatedAt        string                 `json:"created_at"`
 	UpdatedAt        string                 `json:"updated_at"`
@@ -60,4 +62,14 @@ type ReviewCommandResponse struct {
 type ExecuteCommandResponse struct {
 	Command CommandView `json:"command"`
 	Gate    GateView    `json:"gate"`
+}
+
+type RevokeCommandResponse struct {
+	Command CommandView `json:"command"`
+	Gate    GateView    `json:"gate"`
+}
+
+type SwitchGateModeResponse struct {
+	Gate    GateView      `json:"gate"`
+	Revoked []CommandView `json:"revoked_commands,omitempty"`
 }

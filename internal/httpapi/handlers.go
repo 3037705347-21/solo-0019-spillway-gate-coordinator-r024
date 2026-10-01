@@ -34,6 +34,41 @@ func (h *handler) gate(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, contracts.GateResponse{Gate: gateView(gate)})
 }
 
+func (h *handler) switchGateLocal(w http.ResponseWriter, r *http.Request) {
+	var request contracts.SwitchGateModeRequest
+	if err := decodeJSON(w, r, &request); err != nil {
+		writeDomainError(w, err)
+		return
+	}
+
+	gate, revoked, err := h.service.SwitchGateToLocal(r.Context(), r.PathValue("id"), request)
+	if err != nil {
+		writeDomainError(w, err)
+		return
+	}
+
+	response := contracts.SwitchGateModeResponse{Gate: gateView(gate)}
+	for _, command := range revoked {
+		response.Revoked = append(response.Revoked, commandView(command, false))
+	}
+	writeJSON(w, http.StatusOK, response)
+}
+
+func (h *handler) switchGateCentral(w http.ResponseWriter, r *http.Request) {
+	var request contracts.SwitchGateModeRequest
+	if err := decodeJSON(w, r, &request); err != nil {
+		writeDomainError(w, err)
+		return
+	}
+
+	gate, err := h.service.SwitchGateToCentral(r.Context(), r.PathValue("id"), request)
+	if err != nil {
+		writeDomainError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, contracts.SwitchGateModeResponse{Gate: gateView(gate)})
+}
+
 func (h *handler) requestCommand(w http.ResponseWriter, r *http.Request) {
 	var request contracts.RequestCommandRequest
 	if err := decodeJSON(w, r, &request); err != nil {
@@ -104,6 +139,28 @@ func (h *handler) executeCommand(w http.ResponseWriter, r *http.Request) {
 		w,
 		http.StatusOK,
 		contracts.ExecuteCommandResponse{
+			Command: commandView(command, false),
+			Gate:    gateView(gate),
+		},
+	)
+}
+
+func (h *handler) revokeCommand(w http.ResponseWriter, r *http.Request) {
+	var request contracts.RevokeCommandRequest
+	if err := decodeJSON(w, r, &request); err != nil {
+		writeDomainError(w, err)
+		return
+	}
+
+	command, gate, err := h.service.RevokeCommand(r.Context(), r.PathValue("id"), request)
+	if err != nil {
+		writeDomainError(w, err)
+		return
+	}
+	writeJSON(
+		w,
+		http.StatusOK,
+		contracts.RevokeCommandResponse{
 			Command: commandView(command, false),
 			Gate:    gateView(gate),
 		},

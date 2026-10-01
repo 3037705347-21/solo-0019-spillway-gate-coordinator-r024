@@ -15,12 +15,20 @@ const (
 	GateFaulted  GateStatus = "faulted"
 )
 
+type ControlMode string
+
+const (
+	ControlModeCentral ControlMode = "central"
+	ControlModeLocal   ControlMode = "local"
+)
+
 var gateIDPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{2,31}$`)
 
 type Gate struct {
 	ID              string
 	Name            string
 	Status          GateStatus
+	Mode            ControlMode
 	Aperture        float64
 	MaxAperture     float64
 	ActiveCommandID string
@@ -49,6 +57,7 @@ func NewGate(id, name string, maxAperture, initialAperture float64, now time.Tim
 		ID:          id,
 		Name:        name,
 		Status:      GateIdle,
+		Mode:        ControlModeCentral,
 		Aperture:    initialAperture,
 		MaxAperture: maxAperture,
 		UpdatedAt:   now.UTC(),
@@ -56,7 +65,81 @@ func NewGate(id, name string, maxAperture, initialAperture float64, now time.Tim
 	}, nil
 }
 
+// SwitchToLocal hands the gate to field personnel for manual control.
+// A moving gate cannot be taken over because the service must not interrupt a
+// movement it started; a faulted gate keeps its latched status and must be
+// cleared on site first. When the gate is reserved by a central authorization,
+// the reservation is released atomically so local commands can never occupy it.
+func (g *Gate) SwitchToLocal(now time.Time) error {
+	if g.Mode == ControlModeLocal {
+		return Conflict("gate_already_local", "gate is already under local control")
+	}
+	switch g.Status {
+	case GateIdle:
+		g.ActiveCommandID = ""
+	case GateReserved:
+		g.ActiveCommandID = ""
+		g.Status = GateIdle
+	case GateMoving:
+		return Conflict("gate_is_moving", "gate is moving; wait for the movement to finish before local takeover")
+	case GateFaulted:
+		return Conflict("gate_faulted", "faulted gates must be cleared on site before local takeover")
+	default:
+		return Conflict("gate_takeover_unavailable", "gate cannot switch to local control in its current state")
+	}
+
+	g.Mode = ControlModeLocal
+	g.UpdatedAt = now.UTC()
+	g.Version++
+	return nil
+}
+
+// SwitchToCentral returns the gate to coordinated control. The dispatcher must
+// supply the real aperture measured on site at handover time, because local
+// manual operations may have moved the gate while it was away from the service.
+func (g *Gate) SwitchToCentral(confirmedAperture float64, now time.Time) error {
+	if g.Mode == ControlModeCentral {
+		return Conflict("gate_already_central", "gate is already under central control")
+	}
+	if g.Status == GateFaulted {
+		return Conflict("gate_faulted", "faulted gates must be cleared on site before central handback")
+	}
+	if g.Status != GateIdle {
+		return Conflict("gate_not_idle", "gate must be idle before returning to central control")
+	}
+	if confirmedAperture < 0 || confirmedAperture > g.MaxAperture {
+		return Invalid("invalid_confirmed_aperture", "confirmed aperture must be within the gate limit")
+	}
+
+	g.Mode = ControlModeCentral
+	g.Aperture = confirmedAperture
+	g.ActiveCommandID = ""
+	g.UpdatedAt = now.UTC()
+	g.Version++
+	return nil
+}
+
+// ReleaseReservation frees a gate reserved by a revoked central command without
+// changing its control mode or aperture.
+func (g *Gate) ReleaseReservation(commandID string, now time.Time) error {
+	if g.Status != GateReserved {
+		return Conflict("gate_not_reserved", "gate is not reserved by the command")
+	}
+	if g.ActiveCommandID != commandID {
+		return Conflict("gate_command_mismatch", "gate is reserved by a different command")
+	}
+
+	g.Status = GateIdle
+	g.ActiveCommandID = ""
+	g.UpdatedAt = now.UTC()
+	g.Version++
+	return nil
+}
+
 func (g *Gate) Reserve(commandID string, now time.Time) error {
+	if g.Mode == ControlModeLocal {
+		return Conflict("gate_in_local_control", "gate is under local control and cannot be reserved")
+	}
 	if g.Status != GateIdle {
 		return Conflict("gate_not_idle", "gate is not available for a new command")
 	}
@@ -75,6 +158,9 @@ func (g *Gate) Reserve(commandID string, now time.Time) error {
 }
 
 func (g *Gate) StartMovement(commandID string, now time.Time) error {
+	if g.Mode == ControlModeLocal {
+		return Conflict("gate_in_local_control", "gate is under local control and cannot start a central movement")
+	}
 	if g.Status != GateReserved {
 		return Conflict("gate_not_reserved", "gate must be reserved before movement starts")
 	}

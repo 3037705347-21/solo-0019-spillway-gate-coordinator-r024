@@ -124,6 +124,28 @@
         "storage",
         "contracts"
       ]
+    },
+    {
+      "id": "switch-gate-control",
+      "name": "Switch gate between local and central control",
+      "entry": "POST /gates/{id}/local and POST /gates/{id}/central",
+      "steps": [
+        "reject takeover for moving or faulted gates",
+        "atomically switch the gate mode and revoke all outstanding central authorizations",
+        "require a field-confirmed real aperture before returning to central control",
+        "serialize mode switches against review and execution under one lock"
+      ],
+      "success": "returns the gate in local mode with idle status and revoked authorizations, or central mode with the confirmed aperture",
+      "failure": "returns conflict for moving/faulted gates, repeated switches, central operations in local mode, or stale starting apertures after handback",
+      "verification": "workflowcheck performs takeover and handback, confirms old tokens cannot execute, history is untouched, and runs concurrent switch/execute races",
+      "module_ids": [
+        "entrypoint",
+        "httpapi",
+        "coordination",
+        "domain",
+        "storage",
+        "contracts"
+      ]
     }
   ],
   "complexity": {
