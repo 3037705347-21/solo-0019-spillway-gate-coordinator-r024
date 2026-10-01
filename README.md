@@ -16,10 +16,12 @@ go run ./cmd/server --addr 127.0.0.1:18119
 ```text
 POST /gates
 GET  /gates/{id}
+POST /gates/{id}/mode
 POST /commands
 GET  /commands/{id}
 POST /commands/{id}/interlock
 POST /commands/{id}/execute
+POST /commands/{id}/revoke
 ```
 
 登记闸门示例：
@@ -64,6 +66,39 @@ POST /commands/{id}/execute
 }
 ```
 
+撤销尚未执行的中控授权（approved 时会同时释放闸门占用）：
+
+```json
+{
+  "operator": "dispatcher-lin",
+  "reason": "闸门移交现场手动控制"
+}
+```
+
+切换闸门到本地手动控制（必须先撤销未执行的 approved 授权）：
+
+```json
+{
+  "mode": "local",
+  "operator": "operator-chen",
+  "reason": "现场手动操作闸门"
+}
+```
+
+切回中控（必须依据当时真实条件重新确认，实测开度成为新的开度基准）：
+
+```json
+{
+  "mode": "central",
+  "operator": "dispatcher-lin",
+  "reason": "现场操作完毕，恢复中控",
+  "confirmed_aperture": 1.25,
+  "conditions_confirmed": true
+}
+```
+
+闸门视图始终包含当前 `mode`；本地模式下联锁复核与命令执行都会以 `gate_local_mode` 冲突被拒绝。
+
 ## 目录
 
 - `cmd/server`：服务进程。
@@ -82,6 +117,8 @@ go run ./cmd/workflowcheck --workflow register-gate
 go run ./cmd/workflowcheck --workflow request-gate-command
 go run ./cmd/workflowcheck --workflow review-safety-interlock
 go run ./cmd/workflowcheck --workflow execute-gate-command
+go run ./cmd/workflowcheck --workflow local-mode-control
+go run ./cmd/workflowcheck --workflow local-mode-concurrency
 ```
 
 这些检查会创建临时 HTTP 服务并调用真实路由。它们不调用外部网络，也不依赖数据库。

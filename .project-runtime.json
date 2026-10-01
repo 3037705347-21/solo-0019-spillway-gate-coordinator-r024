@@ -26,6 +26,14 @@
     {
       "workflow_id": "execute-gate-command",
       "command": "go run ./cmd/workflowcheck --workflow execute-gate-command"
+    },
+    {
+      "workflow_id": "local-mode-control",
+      "command": "go run ./cmd/workflowcheck --workflow local-mode-control"
+    },
+    {
+      "workflow_id": "local-mode-concurrency",
+      "command": "go run ./cmd/workflowcheck --workflow local-mode-concurrency"
     }
   ]
 }

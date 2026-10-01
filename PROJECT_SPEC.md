@@ -34,16 +34,29 @@
 
 闸门操作员通过 `POST /commands/{id}/execute` 提交执行令牌。服务校验命令、令牌、闸门占用关系和目标开度，在临界区内完成 approved、executing、completed 或 aborted 的转换，并同步更新闸门状态。令牌在命令结束后失效，不能复用。
 
+### revoke-command
+
+运行协调员通过 `POST /commands/{id}/revoke` 处理尚未执行的中控授权。只有 pending（未复核）和 approved（已通过复核、闸门被占用但尚未移动）的命令可撤销；approved 命令被撤销时原子释放闸门占用，执行令牌立即失效。撤销是单向终态，命令的复核记录等历史不被改写。
+
+### switch-gate-mode
+
+现场人员通过 `POST /gates/{id}/mode` 在中控（central）与本地（local）之间切换。切到本地只允许在闸门处于中控且 settle 为 idle 时进行；存在未执行的 approved 授权时返回冲突，必须先显式撤销。本地模式下联锁复核与命令执行都被拒绝，因此不能形成新的占用，也不能启动移动。切回中控必须在请求中显式确认当时现场条件，并提交现场实测开度；实测开度通过校验后成为新的开度基准。所有模式切换记录操作人、原因和时间。切换、复核与执行共享仓库同一把互斥锁，并发时只有一个结果成功。
+
 ## 状态与规则
 
 - `gate` 状态：idle、reserved、moving、faulted。
-- `gate_command` 状态：pending、approved、rejected、executing、completed、aborted。
+- `gate` 控制模式：central、local。
+- `gate_command` 状态：pending、approved、rejected、executing、completed、aborted、revoked。
 - 只有 pending 命令可以复核。
 - 只有 approved 命令可以执行，且执行令牌必须匹配。
+- 本地模式下不能复核（任何结论都不写入、闸门不被占用），也不能执行。
+- 只有 pending 或 approved 命令可以撤销；撤销 approved 命令必须同时释放闸门占用。
+- moving 或 faulted 闸门不能切换控制模式；reserved 闸门必须先撤销授权。
+- 切回中控必须显式确认现场条件，并提交位于闸门限值内的实测开度。
 - clear 复核与闸门占用必须同时成功；任一步失败时两者都不写入。
 - blocked 复核使命令 rejected，不会占用闸门。
 - 模拟故障会令命令 aborted、闸门 faulted，并保留最终开度。
-- 已完成或已中止的命令不能再次执行。
+- 已完成、已中止、已拒绝或已撤销的命令不能再次执行；模式切换不改变任何历史命令与已记录开度。
 
 ## 模块边界
 
@@ -64,6 +77,8 @@
 - `GET /commands/{id}`
 - `POST /commands/{id}/interlock`
 - `POST /commands/{id}/execute`
+- `POST /commands/{id}/revoke`
+- `POST /gates/{id}/mode`
 
 错误响应统一为：
 

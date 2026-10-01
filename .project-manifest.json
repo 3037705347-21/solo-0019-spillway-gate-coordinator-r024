@@ -124,6 +124,48 @@
         "storage",
         "contracts"
       ]
+    },
+    {
+      "id": "revoke-command",
+      "name": "Revoke unexecuted command",
+      "entry": "POST /commands/{id}/revoke",
+      "steps": [
+        "validate operator and reason",
+        "transition a pending or approved command to the terminal revoked state",
+        "release the gate reservation atomically when an approved command is revoked"
+      ],
+      "success": "returns a revoked command and an idle gate without an active command reference",
+      "failure": "returns conflict for executing or already terminal commands",
+      "verification": "workflowcheck revokes an approved authorization and proves its token can no longer execute",
+      "module_ids": [
+        "entrypoint",
+        "httpapi",
+        "coordination",
+        "domain",
+        "storage",
+        "contracts"
+      ]
+    },
+    {
+      "id": "switch-gate-mode",
+      "name": "Switch gate control mode",
+      "entry": "POST /gates/{id}/mode",
+      "steps": [
+        "validate the requested mode, operator, and reason",
+        "switch to local only when the gate is settled with no active authorization",
+        "return to central only with explicit reconfirmation of real conditions and a measured aperture"
+      ],
+      "success": "returns the gate with the new mode and audit fields; central return adopts the measured aperture",
+      "failure": "returns conflict for moving or reserved gates and for duplicate switches; returns invalid for missing reconfirmation",
+      "verification": "workflowcheck performs a full local handover lifecycle and hammers concurrent switch/execute races",
+      "module_ids": [
+        "entrypoint",
+        "httpapi",
+        "coordination",
+        "domain",
+        "storage",
+        "contracts"
+      ]
     }
   ],
   "complexity": {

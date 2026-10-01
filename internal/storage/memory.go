@@ -97,6 +97,12 @@ func (m *MemoryRepository) ReviewCommand(
 	if !exists {
 		return domain.GateCommand{}, domain.Gate{}, domain.NotFound("gate_not_found", "gate id was not found")
 	}
+	if gate.Mode == domain.ControlLocal {
+		return domain.GateCommand{}, domain.Gate{}, domain.Conflict(
+			"gate_local_mode",
+			"interlock reviews are not accepted while the gate is under local control",
+		)
+	}
 
 	nextCommand := cloneCommand(command)
 	if err := nextCommand.Review(decision, token, now); err != nil {
@@ -134,6 +140,12 @@ func (m *MemoryRepository) ExecuteCommand(
 	if !exists {
 		return domain.GateCommand{}, domain.Gate{}, domain.NotFound("gate_not_found", "gate id was not found")
 	}
+	if gate.Mode == domain.ControlLocal {
+		return domain.GateCommand{}, domain.Gate{}, domain.Conflict(
+			"gate_local_mode",
+			"central commands cannot execute while the gate is under local control",
+		)
+	}
 
 	nextCommand := cloneCommand(command)
 	if err := nextCommand.BeginExecution(token, operator, now); err != nil {
@@ -164,6 +176,94 @@ func (m *MemoryRepository) ExecuteCommand(
 	m.commands[nextCommand.ID] = nextCommand
 	m.gates[nextGate.ID] = nextGate
 	return cloneCommand(nextCommand), nextGate, nil
+}
+
+func (m *MemoryRepository) RevokeCommand(
+	_ context.Context,
+	commandID string,
+	operator string,
+	reason string,
+	now time.Time,
+) (domain.GateCommand, domain.Gate, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	command, exists := m.commands[commandID]
+	if !exists {
+		return domain.GateCommand{}, domain.Gate{}, domain.NotFound("command_not_found", "command id was not found")
+	}
+	gate, exists := m.gates[command.GateID]
+	if !exists {
+		return domain.GateCommand{}, domain.Gate{}, domain.NotFound("gate_not_found", "gate id was not found")
+	}
+
+	nextCommand := cloneCommand(command)
+	if err := nextCommand.Revoke(operator, reason, now); err != nil {
+		return domain.GateCommand{}, domain.Gate{}, err
+	}
+
+	// An approved command owns the gate reservation; release it atomically so
+	// the gate never references a revoked authorization.
+	nextGate := gate
+	if command.Status == domain.CommandApproved {
+		if err := nextGate.ReleaseReservation(nextCommand.ID, now); err != nil {
+			return domain.GateCommand{}, domain.Gate{}, err
+		}
+	}
+
+	m.commands[nextCommand.ID] = nextCommand
+	m.gates[nextGate.ID] = nextGate
+	return cloneCommand(nextCommand), nextGate, nil
+}
+
+func (m *MemoryRepository) SwitchGateToLocal(
+	_ context.Context,
+	gateID string,
+	operator string,
+	reason string,
+	now time.Time,
+) (domain.Gate, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	gate, exists := m.gates[gateID]
+	if !exists {
+		return domain.Gate{}, domain.NotFound("gate_not_found", "gate id was not found")
+	}
+
+	nextGate := gate
+	if err := nextGate.SwitchToLocal(operator, reason, now); err != nil {
+		return domain.Gate{}, err
+	}
+
+	m.gates[nextGate.ID] = nextGate
+	return nextGate, nil
+}
+
+func (m *MemoryRepository) ReturnGateToCentral(
+	_ context.Context,
+	gateID string,
+	operator string,
+	reason string,
+	confirmedAperture float64,
+	conditionsConfirmed bool,
+	now time.Time,
+) (domain.Gate, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	gate, exists := m.gates[gateID]
+	if !exists {
+		return domain.Gate{}, domain.NotFound("gate_not_found", "gate id was not found")
+	}
+
+	nextGate := gate
+	if err := nextGate.ReturnToCentral(operator, reason, confirmedAperture, conditionsConfirmed, now); err != nil {
+		return domain.Gate{}, err
+	}
+
+	m.gates[nextGate.ID] = nextGate
+	return nextGate, nil
 }
 
 func cloneCommand(command domain.GateCommand) domain.GateCommand {

@@ -25,3 +25,16 @@ type ExecuteCommandRequest struct {
 	Token         string `json:"token"`
 	SimulateFault bool   `json:"simulate_fault"`
 }
+
+type SwitchGateModeRequest struct {
+	Mode                string  `json:"mode"`
+	Operator            string  `json:"operator"`
+	Reason              string  `json:"reason"`
+	ConfirmedAperture   float64 `json:"confirmed_aperture"`
+	ConditionsConfirmed bool    `json:"conditions_confirmed"`
+}
+
+type RevokeCommandRequest struct {
+	Operator string `json:"operator"`
+	Reason   string `json:"reason"`
+}

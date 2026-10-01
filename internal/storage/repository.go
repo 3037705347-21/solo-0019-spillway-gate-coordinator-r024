@@ -27,4 +27,27 @@ type Repository interface {
 		simulateFault bool,
 		now time.Time,
 	) (domain.GateCommand, domain.Gate, error)
+	RevokeCommand(
+		ctx context.Context,
+		commandID string,
+		operator string,
+		reason string,
+		now time.Time,
+	) (domain.GateCommand, domain.Gate, error)
+	SwitchGateToLocal(
+		ctx context.Context,
+		gateID string,
+		operator string,
+		reason string,
+		now time.Time,
+	) (domain.Gate, error)
+	ReturnGateToCentral(
+		ctx context.Context,
+		gateID string,
+		operator string,
+		reason string,
+		confirmedAperture float64,
+		conditionsConfirmed bool,
+		now time.Time,
+	) (domain.Gate, error)
 }

@@ -109,3 +109,40 @@ func (h *handler) executeCommand(w http.ResponseWriter, r *http.Request) {
 		},
 	)
 }
+
+func (h *handler) switchGateMode(w http.ResponseWriter, r *http.Request) {
+	var request contracts.SwitchGateModeRequest
+	if err := decodeJSON(w, r, &request); err != nil {
+		writeDomainError(w, err)
+		return
+	}
+
+	gate, err := h.service.SwitchGateMode(r.Context(), r.PathValue("id"), request)
+	if err != nil {
+		writeDomainError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, contracts.SwitchGateModeResponse{Gate: gateView(gate)})
+}
+
+func (h *handler) revokeCommand(w http.ResponseWriter, r *http.Request) {
+	var request contracts.RevokeCommandRequest
+	if err := decodeJSON(w, r, &request); err != nil {
+		writeDomainError(w, err)
+		return
+	}
+
+	command, gate, err := h.service.RevokeCommand(r.Context(), r.PathValue("id"), request)
+	if err != nil {
+		writeDomainError(w, err)
+		return
+	}
+	writeJSON(
+		w,
+		http.StatusOK,
+		contracts.RevokeCommandResponse{
+			Command: commandView(command, false),
+			Gate:    gateView(gate),
+		},
+	)
+}

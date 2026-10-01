@@ -12,16 +12,23 @@ func formatTime(value time.Time) string {
 }
 
 func gateView(gate domain.Gate) contracts.GateView {
-	return contracts.GateView{
+	view := contracts.GateView{
 		ID:              gate.ID,
 		Name:            gate.Name,
 		Status:          string(gate.Status),
+		Mode:            string(gate.Mode),
 		Aperture:        gate.Aperture,
 		MaxAperture:     gate.MaxAperture,
 		ActiveCommandID: gate.ActiveCommandID,
 		UpdatedAt:       formatTime(gate.UpdatedAt),
 		Version:         gate.Version,
 	}
+	if gate.ModeChangedBy != "" {
+		view.ModeChangedBy = gate.ModeChangedBy
+		view.ModeReason = gate.ModeReason
+		view.ModeChangedAt = formatTime(gate.ModeChangedAt)
+	}
+	return view
 }
 
 func commandView(command domain.GateCommand, includeToken bool) contracts.CommandView {
@@ -34,6 +41,7 @@ func commandView(command domain.GateCommand, includeToken bool) contracts.Comman
 		RequestedBy:      command.RequestedBy,
 		Status:           string(command.Status),
 		ExecutedBy:       command.ExecutedBy,
+		RevokedBy:        command.RevokedBy,
 		TerminalReason:   command.TerminalReason,
 		CreatedAt:        formatTime(command.CreatedAt),
 		UpdatedAt:        formatTime(command.UpdatedAt),
